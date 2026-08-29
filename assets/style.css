@@ -1,0 +1,482 @@
+@charset "utf-8";
+/* ============================================================================
+   月謝帳 ── ジム・エステ・クリニックに毎月いくら払うのか
+   ----------------------------------------------------------------------------
+   引いたカード（既出台帳）
+     ①配色 C-6 紙面＋藤（色相 253。塗り面積は画素で実測して10%未満）
+     ②書体 F-2 Bricolage Grotesque（opsz 12-96 / wdth 75-100）× Murecho × Roboto Mono
+     ③レイアウト L-2 28カラムグリッド（外枠は 15vw / 624px / 1fr の非対称3列）
+     ④動きの語彙 3種
+        M-13 目盛りが右へ伸びる  transform:scaleX(0→1) origin:left
+        M-14 段が開いて畳まれる  grid-template-rows:0fr→1fr（操作起点）
+        M-15 現在地の柱が移る    柱の塗りを translateY で移動
+        ※不透明度だけの変化は語彙に数えない（P-12）
+     ⑤図解 G-3 幾何学的な抽象イラスト  ⑥FV V-7 帳面の見開き型
+   イージング 2本 ／ 影は4段＋輪郭で、押せる要素にだけ付ける
+   ========================================================================== */
+
+/* ── 1. トークン ─────────────────────────────────────────── */
+:root{
+  /* 無彩色の階段 7段（暗部を細かく）。純黒・純白は1つも無い */
+  --n-05:#F2F1ED; --n-10:#E6E4DE; --n-20:#D2CFC6;
+  --n-40:#8B8880; --n-60:#5A5851; --n-80:#322F2A; --n-95:#1E1C19;
+  /* 彩度のある色は藤の1色相だけ */
+  --a-60:#6E5FA6; --a-70:#5B4E8C; --a-30:#DBD7E6;
+
+  --ink-rgb:33 31 27;
+  --acc-rgb:110 95 166;
+  --pap-rgb:242 241 237;
+
+  /* 透明度は5段だけ。生の数値はここにしか出てこない */
+  --o-1:.055; --o-2:.11; --o-3:.26; --o-4:.5; --o-5:.74;
+  --o-hide:0;
+
+  --line-1:rgb(var(--ink-rgb) / var(--o-1));
+  --line-2:rgb(var(--ink-rgb) / var(--o-2));
+  --line-3:rgb(var(--ink-rgb) / var(--o-3));
+  --acc-1:rgb(var(--acc-rgb) / var(--o-1));
+  --acc-2:rgb(var(--acc-rgb) / var(--o-2));
+  --acc-3:rgb(var(--acc-rgb) / var(--o-3));
+
+  --face-1:var(--n-05); --face-2:var(--n-10); --face-3:var(--n-20);
+  --ink:var(--n-95); --ink-2:var(--n-80); --ink-3:var(--n-60); --ink-4:var(--n-40);
+  --acc:var(--a-60); --acc-deep:var(--a-70); --acc-pale:var(--a-30);
+
+  /* 操作できる要素の色は、ブランド色とは別の名前空間に置く（P-19） */
+  --form-face:#EDEBE4; --form-face-hi:#E3E0D6;
+  --form-ink:#26241F; --form-edge:rgb(var(--ink-rgb) / var(--o-3));
+  --form-mark:#5B4E8C; --form-ring:rgb(var(--acc-rgb) / var(--o-4));
+
+  /* 書体：欧文 → 和文 → 総称 の順（P-04） */
+  --f-disp:'Bricolage Grotesque','Murecho','Hiragino Sans','Yu Gothic',sans-serif;
+  --f-text:'Bricolage Grotesque','Murecho','Hiragino Sans','Yu Gothic',sans-serif;
+  --f-num:'Roboto Mono','Bricolage Grotesque',ui-monospace,monospace;
+
+  /* 文字：見出しは最小:最大＝1:1.5 で統一（P-09）。隣り合う段の比率は1.125 */
+  --fs-display:clamp(2.25rem,1.74rem + 2.16vw,3.375rem);  /* 36 → 54 */
+  --fs-h1:clamp(1.6875rem,1.31rem + 1.62vw,2.53125rem);  /* 27 → 40.5 */
+  --fs-h2:clamp(1.375rem,1.06rem + 1.32vw,2.0625rem);    /* 22 → 33 */
+  --fs-h3:clamp(1.1875rem,0.92rem + 1.14vw,1.78125rem);  /* 19 → 28.5 */
+  --fs-lede:clamp(1.125rem,0.99rem + 0.58vw,1.6875rem);  /* 18 → 27 */
+  --fs-body:clamp(1rem,0.965rem + 0.15vw,1.125rem);      /* 16 → 18 */
+  --fs-small:clamp(0.875rem,0.86rem + 0.06vw,0.9375rem); /* 14 → 15 */
+  --fs-label:0.8125rem;                                  /* 13 */
+
+  /* 行間は4段（R-05 の二極化）*/
+  --lh-display:1.06; --lh-head:1.22; --lh-ui:1.42; --lh-list:1.62; --lh-read:1.86;
+
+  /* 余白は4px刻み */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
+  --sp-6:28px; --sp-7:36px; --sp-8:44px; --sp-9:64px; --sp-10:96px;
+
+  --col:624px;                 /* 本文カラムの上限（見本の1440px時の実測値） */
+  --r-1:4px; --r-2:12px;       /* 角丸は2段だけ */
+
+  /* イージングは2本。既定の ease は1回も使わない（R-04） */
+  --e-out:cubic-bezier(.16,.74,.22,1);
+  --e-both:cubic-bezier(.58,.03,.24,1);
+  --t-color:.18s; --t-move:.34s; --t-face:.62s; --t-rv:.22s;
+
+  /* 影は4段＋輪郭。押せる要素にだけ使う（P-13 / A-06） */
+  --sh-rest:
+    0 0 0 1px rgb(var(--ink-rgb) / var(--o-2)),
+    0 1px 1px rgb(var(--ink-rgb) / var(--o-1)),
+    0 6px 12px -8px rgb(var(--ink-rgb) / var(--o-2)),
+    0 20px 32px -26px rgb(var(--ink-rgb) / var(--o-3));
+  --sh-lift:
+    0 0 0 1px rgb(var(--acc-rgb) / var(--o-3)),
+    0 2px 3px rgb(var(--ink-rgb) / var(--o-1)),
+    0 12px 20px -12px rgb(var(--ink-rgb) / var(--o-2)),
+    0 34px 46px -32px rgb(var(--ink-rgb) / var(--o-3));
+
+  --stable-lvh:1vh;            /* JSが実測値に置き換える（P-14 / R-09） */
+  color-scheme:light dark;
+}
+
+@media (prefers-color-scheme:dark){
+  :root{
+    --n-05:#1A1917; --n-10:#232220; --n-20:#2E2C29;
+    --n-40:#6F6C65; --n-60:#9A968D; --n-80:#CFCBC1; --n-95:#E9E6DE;
+    --a-60:#A99BD8; --a-70:#C0B5E4; --a-30:#3A3350;
+    --ink-rgb:233 230 222;
+    --acc-rgb:169 155 216;
+    --pap-rgb:26 25 23;
+    --o-1:.07; --o-2:.14; --o-3:.3; --o-4:.54; --o-5:.78;
+    --form-face:#2A2825; --form-face-hi:#343128;
+    --form-ink:#E9E6DE; --form-mark:#C0B5E4;
+  }
+}
+
+/* ── 2. 下地 ─────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--face-1);
+  color:var(--ink);
+  font-family:var(--f-text);
+  font-size:var(--fs-body);
+  line-height:var(--lh-read);
+  letter-spacing:.02em;
+  font-feature-settings:"palt" 1;   /* 約物の詰め（P-06） */
+  font-variation-settings:'opsz' 14,'wdth' 100;
+  text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+}
+img,svg{max-width:100%;height:auto;display:block}
+h1,h2,h3,h4,p,ul,ol,figure,blockquote,dl,dd{margin:0}
+ul,ol{padding:0;list-style:none}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--form-ring);outline-offset:3px;border-radius:var(--r-1)}
+
+/* 数字だけ欧文の等幅へ（R-12 / P-05） */
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums;
+     font-size:.94em;letter-spacing:.005em;font-weight:500}
+
+/* ── 3. 文字の役割（タグではなくクラスで当てる：P-17） ─────── */
+.t-display{font-family:var(--f-disp);font-size:var(--fs-display);line-height:var(--lh-display);
+  letter-spacing:-.032em;font-weight:600;font-variation-settings:'opsz' 96,'wdth' 92}
+.t-h1{font-family:var(--f-disp);font-size:var(--fs-h1);line-height:1.14;
+  letter-spacing:-.024em;font-weight:600;font-variation-settings:'opsz' 72,'wdth' 94}
+.t-h2{font-family:var(--f-disp);font-size:var(--fs-h2);line-height:var(--lh-head);
+  letter-spacing:-.014em;font-weight:600;font-variation-settings:'opsz' 40,'wdth' 96}
+.t-h3{font-family:var(--f-disp);font-size:var(--fs-h3);line-height:1.3;
+  letter-spacing:-.006em;font-weight:600;font-variation-settings:'opsz' 24,'wdth' 98}
+.t-lede{font-size:var(--fs-lede);line-height:1.66;letter-spacing:.008em;color:var(--ink-2)}
+.t-body{font-size:var(--fs-body);line-height:var(--lh-read);letter-spacing:.02em}
+.t-body.lead-line{font-weight:600;color:var(--ink)}
+.t-body strong{font-weight:600;background:linear-gradient(transparent 62%,var(--acc-2) 62%)}
+.label{font-family:var(--f-num);font-size:var(--fs-label);line-height:var(--lh-ui);
+  letter-spacing:.16em;color:var(--ink-4)}
+.ph{white-space:nowrap}                    /* 文節ロック（P-21 / R-19） */
+ruby>rt{font-size:.45em;letter-spacing:0;font-weight:400;color:var(--ink-3)}
+
+/* ── 4. 骨格 ──────────────────────────────────────────────
+   外枠は 15vw / 624px / 1fr の非対称3列（R-02）。
+   章の中では28分割グリッドを使う（L-2）。                                   */
+.shell{max-width:1360px;margin:0 auto;padding:0 var(--sp-5)}
+.page{display:block}
+@media (min-width:1000px){
+  .page{display:grid;
+    grid-template-columns:minmax(140px,15vw) minmax(0,var(--col)) minmax(160px,1fr);
+    column-gap:var(--sp-9);align-items:start}
+}
+.rail{display:none}
+@media (min-width:1000px){
+  .rail{display:block;position:sticky;top:var(--sp-9);align-self:start}
+}
+.side{display:none}
+@media (min-width:1000px){.side{display:block;position:sticky;top:var(--sp-9)}}
+
+.grid28{display:grid;grid-template-columns:repeat(28,minmax(0,1fr));column-gap:var(--sp-2)}
+
+/* ── 5. 章の面（罫線ではなく地の色で切り替える：P-16 / R-18）
+      どの面にも層がある。単色ベタは置かない（A-07）                        */
+.band{padding-block:var(--sp-9)}
+@media (max-width:1039px){.band{padding-block:var(--sp-7)}}
+.band__inner{max-width:var(--col)}
+.band--face1{
+  background:
+    repeating-linear-gradient(180deg,var(--line-1) 0 1px,transparent 1px 44px),
+    radial-gradient(120% 70% at 8% -10%,var(--acc-1),transparent 60%),
+    var(--face-1);
+}
+.band--face2{
+  background:
+    repeating-linear-gradient(90deg,var(--line-1) 0 1px,transparent 1px 88px),
+    linear-gradient(178deg,rgb(var(--ink-rgb) / var(--o-1)),transparent 46%),
+    var(--face-2);
+}
+.band--face3{
+  background:
+    repeating-linear-gradient(180deg,var(--line-2) 0 1px,transparent 1px 6px),
+    radial-gradient(90% 60% at 92% 8%,var(--acc-2),transparent 58%),
+    var(--face-3);
+}
+
+/* ── 6. 余白のリズム（同じ値で積まない：A-03） ─────────────── */
+.stack>*+*{margin-top:var(--sp-5)}
+.stack>.t-h2{margin-top:var(--sp-9)}
+.stack>.t-h3{margin-top:var(--sp-7)}
+.stack>.t-h2+*{margin-top:var(--sp-4)}
+.stack>.t-h3+*{margin-top:var(--sp-3)}
+.stack>.fig{margin-top:var(--sp-8)}
+.stack>.fig+*{margin-top:var(--sp-6)}
+.stack>.cl{margin-top:var(--sp-6)}
+.stack>.notes{margin-top:var(--sp-7)}
+.stack>.t-lede{margin-top:var(--sp-6)}
+
+/* ── 7. 動きの語彙 ①M-13 目盛りが右へ伸びる ───────────────
+      登場は「行頭の目盛りが右へ伸びて、読める合図になる」だけにする。      */
+.rv{position:relative;padding-top:18px}
+.rv::before{content:"";position:absolute;left:0;top:0;height:2px;width:2.5rem;
+  background:var(--acc);transform:scaleX(0);transform-origin:left center}
+.fig.rv::before{width:1.5rem}
+html.js .rv{opacity:var(--o-hide)}
+html.js .rv[data-rv="in"]{opacity:1}
+html.js .rv{transition:opacity var(--t-rv) var(--e-out)}
+html.js .rv::before{transition:transform var(--t-move) var(--e-out) 60ms}
+html.js .rv[data-rv="in"]::before{transform:scaleX(1)}
+/* 目盛りは棒グラフでも同じ動きをする */
+.bar__fill{transform:scaleX(0);transform-origin:left center;
+  transition:transform var(--t-face) var(--e-both)}
+[data-rv="in"] .bar__fill{transform:scaleX(1)}
+
+/* ── 8. 動きの語彙 ②M-14 段が開いて畳まれる（操作起点） ────── */
+.fold{border-top:1px solid var(--line-2)}
+.fold__btn{display:flex;width:100%;gap:var(--sp-3);align-items:baseline;
+  padding:var(--sp-4) 0;background:none;border:0;cursor:pointer;text-align:left;
+  color:var(--form-ink);font:inherit;font-weight:600;line-height:var(--lh-ui);
+  transition:color var(--t-color) var(--e-out)}
+.fold__btn:hover{color:var(--form-mark)}
+.fold__mark{font-family:var(--f-num);font-size:var(--fs-label);color:var(--form-mark);
+  letter-spacing:.1em;flex:none}
+.fold__body{display:grid;grid-template-rows:0fr;
+  transition:grid-template-rows var(--t-move) var(--e-both)}
+.fold__body>div{overflow:hidden}
+.fold[data-open="1"] .fold__body{grid-template-rows:1fr}
+.fold__inner{padding-bottom:var(--sp-5);color:var(--ink-2);font-size:var(--fs-small);
+  line-height:var(--lh-list)}
+
+/* ── 9. 動きの語彙 ③M-15 現在地の柱が移る ─────────────────── */
+.rail__list{position:relative;padding-left:var(--sp-4);
+  border-left:1px solid var(--line-2)}
+.rail__mark{position:absolute;left:-1px;top:0;width:2px;height:var(--mark-h,24px);
+  background:var(--acc);
+  transform:translateY(var(--mark-y,0px));
+  transition:transform var(--t-move) var(--e-both),height var(--t-move) var(--e-both)}
+.rail__item{display:block;font-size:var(--fs-label);line-height:var(--lh-ui);
+  color:var(--ink-4);padding-block:var(--sp-2);text-decoration:none;
+  transition:color var(--t-color) var(--e-out)}
+.rail__item[aria-current="true"]{color:var(--ink)}
+.rail__item:hover{color:var(--form-mark)}
+/* 章名は縦に流す（B-02） */
+.rail__vert{display:none;writing-mode:vertical-rl;text-orientation:mixed;
+  font-family:var(--f-disp);font-weight:600;font-size:var(--fs-small);
+  letter-spacing:.28em;color:var(--ink-4);margin-bottom:var(--sp-6)}
+.rail__vert .num{text-combine-upright:all;letter-spacing:0}
+
+/* ── 10. ヘッダーとフッター ───────────────────────────────── */
+.head{position:sticky;top:0;z-index:8;
+  background:
+    linear-gradient(180deg,rgb(var(--pap-rgb) / var(--o-5)),rgb(var(--pap-rgb) / var(--o-4))),
+    var(--face-1);
+  -webkit-backdrop-filter:saturate(120%) blur(9px);backdrop-filter:saturate(120%) blur(9px);
+  border-bottom:1px solid var(--line-2)}
+.head__in{display:flex;align-items:center;gap:var(--sp-5);
+  min-height:60px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:var(--sp-2);text-decoration:none;
+  font-family:var(--f-disp);font-weight:600;letter-spacing:-.01em;
+  font-variation-settings:'opsz' 30,'wdth' 92}
+.brand__mark{width:22px;height:22px;flex:none}
+.nav{display:flex;gap:var(--sp-4);flex-wrap:wrap;margin-left:auto}
+.nav a{font-size:var(--fs-label);letter-spacing:.06em;color:var(--ink-3);
+  text-decoration:none;padding-block:var(--sp-2);
+  transition:color var(--t-color) var(--e-out)}
+.nav a:hover,.nav a[aria-current="page"]{color:var(--acc-deep)}
+.foot{background:
+    repeating-linear-gradient(180deg,var(--line-1) 0 1px,transparent 1px 44px),
+    var(--face-2);
+  border-top:1px solid var(--line-2);padding-block:var(--sp-9);margin-top:var(--sp-10)}
+.foot__grid{display:grid;gap:var(--sp-7)}
+@media (min-width:760px){.foot__grid{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr)}}
+.foot a{color:var(--ink-2);text-decoration:none;font-size:var(--fs-small);
+  line-height:var(--lh-list);transition:color var(--t-color) var(--e-out)}
+.foot a:hover{color:var(--acc-deep)}
+.foot__li{padding-block:var(--sp-1)}
+
+/* ── 11. ファーストビュー V-7 帳面の見開き型 ───────────────── */
+.fv{padding-top:var(--sp-9);padding-bottom:var(--sp-9);
+  min-height:calc(74 * var(--stable-lvh));display:flex;align-items:center}
+.fv__wrap{display:grid;gap:var(--sp-8);width:100%}
+@media (min-width:900px){
+  .fv__wrap{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);
+    column-gap:var(--sp-10);align-items:end}
+}
+.fv__sub{color:var(--ink-3);font-size:var(--fs-small);line-height:var(--lh-list);
+  max-width:34em;margin-top:var(--sp-5)}
+.fv__figure{margin-top:var(--sp-9)}
+.idx{border-top:1px solid var(--line-3)}
+.idx__row{display:grid;grid-template-columns:2.6rem minmax(0,1fr);gap:var(--sp-3);
+  padding-block:var(--sp-3);border-bottom:1px solid var(--line-1);text-decoration:none}
+.idx__n{display:block;font-family:var(--f-num);font-size:var(--fs-label);color:var(--acc-deep);
+  letter-spacing:.04em;padding-top:.25em}
+.idx__t{display:block;font-size:var(--fs-small);line-height:var(--lh-ui);color:var(--ink-2);
+  transition:color var(--t-color) var(--e-out)}
+.idx__row:hover .idx__t{color:var(--acc-deep)}
+
+/* ── 12. 記事カード（押せるものにだけ影：A-06） ───────────── */
+.cards{display:grid;gap:var(--sp-5)}
+@media (min-width:680px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:1000px){
+  .cards{grid-template-columns:repeat(28,minmax(0,1fr));column-gap:var(--sp-2);row-gap:var(--sp-5)}
+  .cards>.card:nth-child(4n+1){grid-column:span 16}
+  .cards>.card:nth-child(4n+2){grid-column:span 12}
+  .cards>.card:nth-child(4n+3){grid-column:span 12}
+  .cards>.card:nth-child(4n+4){grid-column:span 16}
+}
+.card{display:block;padding:var(--sp-6);border-radius:var(--r-2);text-decoration:none;
+  background:linear-gradient(176deg,rgb(var(--pap-rgb) / var(--o-5)),transparent 70%),var(--face-1);
+  box-shadow:var(--sh-rest);
+  transition:box-shadow var(--t-move) var(--e-out),transform var(--t-move) var(--e-out)}
+.card:hover{box-shadow:var(--sh-lift)}
+.card__k{display:block;font-family:var(--f-num);font-size:var(--fs-label);letter-spacing:.14em;
+  color:var(--acc-deep)}
+.card__t{display:block;margin-top:var(--sp-3);font-family:var(--f-disp);font-weight:600;
+  font-size:var(--fs-h3);line-height:1.3;letter-spacing:-.006em;
+  font-variation-settings:'opsz' 24,'wdth' 98}
+.card__d{display:block;margin-top:var(--sp-3);padding-top:var(--sp-3);
+  border-top:1px solid var(--line-2);
+  font-size:var(--fs-small);line-height:var(--lh-list);color:var(--ink-3)}
+
+/* ── 13. 図 ──────────────────────────────────────────────── */
+.fig{margin:0}
+.fig__box{border:1px solid var(--line-2);border-radius:var(--r-1);
+  background:linear-gradient(180deg,rgb(var(--pap-rgb) / var(--o-4)),transparent),var(--face-1);
+  padding:var(--sp-5)}
+.fig__cap{margin-top:var(--sp-3);font-size:var(--fs-small);line-height:var(--lh-ui);
+  color:var(--ink-2);font-weight:600}
+.fig__note{margin-top:var(--sp-2);font-size:var(--fs-label);line-height:var(--lh-list);
+  color:var(--ink-4)}
+.fig svg{width:100%;height:auto}
+.svg-ink{fill:var(--ink)} .svg-ink2{fill:var(--ink-3)} .svg-ink3{fill:var(--ink-4)}
+.svg-acc{fill:var(--acc)} .svg-face{fill:var(--face-2)} .svg-face3{fill:var(--face-3)}
+.s-t{font-family:var(--f-num);font-size:13px;letter-spacing:-.01em}
+.s-t-jp{font-family:var(--f-text);font-size:13px;letter-spacing:.01em}
+
+/* ── 14. 箇条書き・注記・出典 ─────────────────────────────── */
+.cl{display:grid;gap:var(--sp-3)}
+.cl__item{display:grid;grid-template-columns:1.5rem minmax(0,1fr);gap:var(--sp-2);
+  font-size:var(--fs-small);line-height:var(--lh-list);color:var(--ink-2)}
+.cl__item::before{content:"";width:9px;height:9px;margin-top:.55em;
+  background:var(--acc);clip-path:polygon(0 0,100% 50%,0 100%)}
+.notes{border-left:2px solid var(--acc);padding:var(--sp-4) 0 var(--sp-4) var(--sp-5);
+  background:linear-gradient(90deg,var(--acc-1),transparent 70%)}
+.notes .note{font-size:var(--fs-small);line-height:var(--lh-list);color:var(--ink-2)}
+.notes .note+.note{margin-top:var(--sp-3)}
+.notes__t{font-family:var(--f-num);font-size:var(--fs-label);letter-spacing:.14em;
+  color:var(--acc-deep);margin-bottom:var(--sp-3)}
+.src{font-size:var(--fs-label);line-height:var(--lh-list);color:var(--ink-4)}
+.src a{color:var(--ink-3);text-underline-offset:3px}
+
+/* ── 15. 広告の枠と開示（S-11 / S-12） ────────────────────── */
+.disc{display:flex;gap:var(--sp-2);align-items:baseline;
+  font-size:var(--fs-label);line-height:var(--lh-list);color:var(--ink-3);
+  border:1px solid var(--line-2);border-radius:var(--r-1);padding:var(--sp-3) var(--sp-4);
+  background:linear-gradient(180deg,var(--acc-1),transparent),var(--face-1)}
+.disc__k{font-family:var(--f-num);letter-spacing:.14em;color:var(--acc-deep);flex:none}
+.ad-slot{margin-block:var(--sp-8);padding:var(--sp-5);border:1px solid var(--line-2);
+  border-radius:var(--r-2);
+  background:repeating-linear-gradient(135deg,var(--line-1) 0 2px,transparent 2px 10px),var(--face-2)}
+.ad-slot__d{font-size:var(--fs-label);letter-spacing:.1em;color:var(--acc-deep);
+  font-family:var(--f-num);margin-bottom:var(--sp-3)}
+.ad-slot__box{min-height:96px;display:grid;place-items:center;border-radius:var(--r-1);
+  border:1px solid var(--line-2);background:var(--face-1);
+  color:var(--ink-4);font-size:var(--fs-label);line-height:var(--lh-list);
+  text-align:center;padding:var(--sp-4)}
+
+/* ── 16. 表 ─────────────────────────────────────────────── */
+.tbl-wrap{overflow-x:auto;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#111 24px,#111 calc(100% - 24px),transparent 100%);
+  mask-image:linear-gradient(90deg,transparent 0,#111 24px,#111 calc(100% - 24px),transparent 100%);
+  -webkit-mask-size:100% 100%;mask-size:100% 100%;
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
+.tbl{border-collapse:collapse;width:100%;min-width:520px;font-size:var(--fs-small)}
+.tbl th,.tbl td{text-align:left;padding:var(--sp-3) var(--sp-4);
+  border-bottom:1px solid var(--line-2);line-height:var(--lh-ui);vertical-align:top}
+.tbl thead th{font-family:var(--f-num);font-size:var(--fs-label);letter-spacing:.1em;
+  color:var(--ink-4);border-bottom:1px solid var(--line-3)}
+.tbl td .num{color:var(--ink)}
+
+/* ── 17. パンくずと記事の頭 ───────────────────────────────── */
+.crumb{font-size:var(--fs-label);color:var(--ink-4);padding-top:var(--sp-6)}
+.crumb a{color:var(--ink-3);text-decoration:none}
+.crumb a:hover{color:var(--acc-deep)}
+.art__head{padding-top:var(--sp-6)}
+.art__meta{display:flex;gap:var(--sp-4);flex-wrap:wrap;margin-top:var(--sp-5);
+  font-family:var(--f-num);font-size:var(--fs-label);letter-spacing:.08em;color:var(--ink-4)}
+.next{display:grid;gap:var(--sp-4);margin-top:var(--sp-9)}
+.next .card__t{font-size:clamp(1.0625rem,0.98rem + 0.35vw,1.375rem);line-height:1.34}
+@media (min-width:680px){.next{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ── 18. フォーム（操作の色は別名前空間：P-19） ───────────── */
+.form{display:grid;gap:var(--sp-5);max-width:var(--col)}
+.field{display:grid;gap:var(--sp-2)}
+.field>span{font-size:var(--fs-label);letter-spacing:.08em;color:var(--ink-3)}
+.field input,.field textarea{font:inherit;font-size:var(--fs-small);color:var(--form-ink);
+  background:var(--form-face);border:1px solid var(--form-edge);border-radius:var(--r-1);
+  padding:var(--sp-3) var(--sp-4);
+  transition:border-color var(--t-color) var(--e-out),background var(--t-color) var(--e-out)}
+.field input:focus,.field textarea:focus{background:var(--form-face-hi);
+  border-color:var(--form-mark);outline:2px solid var(--form-ring);outline-offset:1px}
+.btn{display:inline-flex;align-items:center;gap:var(--sp-2);justify-self:start;
+  font:inherit;font-size:var(--fs-small);font-weight:600;color:var(--form-ink);
+  background:var(--form-face);border:1px solid var(--form-edge);
+  border-radius:var(--r-1);padding:var(--sp-3) var(--sp-6);cursor:pointer;
+  box-shadow:var(--sh-rest);
+  transition:box-shadow var(--t-move) var(--e-out),background var(--t-color) var(--e-out)}
+.btn:hover{background:var(--form-face-hi);box-shadow:var(--sh-lift)}
+
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip-path:inset(50%);white-space:nowrap;border:0}
+.skip{position:absolute;left:-9999px;top:0}
+.skip:focus{left:var(--sp-4);top:var(--sp-2);z-index:20;background:var(--face-1);
+  padding:var(--sp-2) var(--sp-4);border-radius:var(--r-1);box-shadow:var(--sh-rest)}
+
+/* ── 19. 動きを止める（R-10） ─────────────────────────────── */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:1ms !important;animation-duration:1ms !important}
+  html.js .rv{opacity:1}
+  .rv::before,.bar__fill{transform:scaleX(1)}
+  .fold__body{grid-template-rows:1fr}
+}
+
+
+/* ── 図の中の文字を、スマホで縮ませない ──────────────────
+   SVGは器の幅に合わせて縮むので、375pxでは12pxの字が実測7〜8pxになっていた。
+   狭い画面のときだけ、図を実寸のまま横に流す（端はマスクで溶かす：P-15）。 */
+@media (max-width:520px){
+  .fig__scroll{overflow-x:auto;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#111 14px,#111 calc(100% - 14px),transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#111 14px,#111 calc(100% - 14px),transparent 100%);
+    -webkit-mask-size:100% 100%;mask-size:100% 100%;
+    -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
+  .fig__scroll>svg{min-width:420px;width:auto}
+  .fig__box.is-scrollable::after{content:"→ 図は横に動かせます";display:block;margin-top:8px;
+    font-family:var(--f-num);font-size:13px;color:var(--ink-4);letter-spacing:0}
+}
+
+/* ── 20. 印刷（B-15） ─────────────────────────────────────── */
+@media print{
+  .head,.foot,.rail,.side,.ad-slot,.next{display:none}
+  body{background:none;color:#1E1C19;font-size:10.5pt}
+  .band{padding-block:12pt;background:none}
+  .fig,.card,.notes,.tbl{break-inside:avoid}
+  .card{box-shadow:none;border:1pt solid #8B8880}
+  .page{display:block}
+  html.js .rv{opacity:1}
+  .rv::before,.bar__fill{transform:scaleX(1)}
+}
+
+/* ── 21. 章の3列（非対称：R-02）────────────────────────────
+      左＝縦組みの章名（B-02）／中＝本文624px／右＝その章の目次と出典        */
+.band__grid{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--sp-6)}
+.band__grid--wide{gap:var(--sp-6)}
+@media (min-width:1040px){
+  .band__grid{grid-template-columns:minmax(150px,14vw) minmax(0,var(--col)) minmax(190px,1fr);
+    column-gap:var(--sp-9);align-items:start;gap:0}
+  /* 記事の一覧と広告の枠だけは、28分割を実際に使うために中の列を広げる */
+  .band__grid--wide{grid-template-columns:minmax(150px,14vw) minmax(0,1fr) minmax(0,4vw)}
+}
+.col-lab{display:flex;gap:var(--sp-3);align-items:baseline}
+@media (min-width:1040px){
+  .col-lab{position:sticky;top:96px;display:block}
+  /* 縦組みは、柱として置ける広い画面のときだけ出す（B-02） */
+  .col-lab .rail__vert{display:block;margin-bottom:0}
+}
+.col-side{display:none}
+@media (min-width:1040px){.col-side{display:block;position:sticky;top:96px}}
+.col-side .rail__list{margin-top:var(--sp-4)}
+.lab__n{font-family:var(--f-num);font-size:var(--fs-label);letter-spacing:.14em;
+  color:var(--acc-deep)}
+@media (min-width:1040px){.lab__n{display:block;margin-bottom:var(--sp-4)}}

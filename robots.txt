@@ -1,0 +1,5 @@
+# どの検索エンジンにも、全ページを読んでもらう
+User-agent: *
+Allow: /
+
+Sitemap: https://karada-gessha.com/sitemap.xml
